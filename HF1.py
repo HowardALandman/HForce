@@ -10,7 +10,6 @@ import numpy
 import random
 import time
 from dotstar import Adafruit_DotStar
-from fnmatch import filter
 from readColorMaps import readColorMaps
 
 # Initialize USB microphone.
@@ -40,7 +39,8 @@ inp.setperiodsize(64)
 n_pixels = 72 # Number of LEDs in strip
 strip   = Adafruit_DotStar(n_pixels)	# Use SPI (pins 10=MOSI, 11=SCLK)
 strip.begin()           # Initialize pins for output
-strip.setBrightness(32) # Limit brightness to ~1/8 duty cycle
+MAX_BRIGHTNESS = 64	# Limit brightness to ~1/4 duty cycle
+strip.setBrightness(MAX_BRIGHTNESS)
 
 # Read ColorMaps from files.
 n_colors = 256	# length of static color maps
@@ -154,7 +154,7 @@ osc_max = OSC_BOUND	# semi-reasonable initial expectation
 osc_min = -OSC_BOUND	# semi-reasonable initial expectation
 
 # Target frame rate
-frameRate = 60		# Hz
+frameRate = 50		# Hz
 period = 1.0/frameRate	# Seconds
 
 while True:                              # Loop forever
@@ -229,9 +229,11 @@ while True:                              # Loop forever
 		# so that one loud spike doesn't permanently mute the wave.
 		# Also try to keep the wave roughly centered.
 		if (osc_pixel < (n_pixels//2)):
-			osc_max = max(OSC_BOUND,osc_max-2)
+			#osc_max = max(OSC_BOUND,osc_max-2)
+			osc_max = max(osc_min+1,osc_max-2)
 		else:
-			osc_min =  min(-OSC_BOUND,osc_min+2)
+			#osc_min =  min(-OSC_BOUND,osc_min+2)
+			osc_min =  min(osc_max-1,osc_min+2)
 	for i in range(osc_pixel_old,osc_pixel):
 		wave[i] = 1.0*(n_pixels-1)
 	wave[osc_pixel] = 1.0*(n_pixels-1)
@@ -270,6 +272,8 @@ while True:                              # Loop forever
 	# Apply the ColorMap.
 	for p in range(n_pixels):
 		strip.setPixelColor(p, cm_interp(cm_map,screen[p]))
+	# Fade to black if volume is low.
+	strip.setBrightness(min(MAX_BRIGHTNESS,(osc_max-osc_min)//2))
 
 	# Sleep if we finished with time to spare.
 	delta = target_time - time.time()
