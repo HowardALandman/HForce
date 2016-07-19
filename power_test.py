@@ -15,9 +15,10 @@ for p in range(n_pixels):
 	strip.setPixelColor(p, WHITE)
 
 for b in range(256):
-	print b
+	#print b
 	strip.setBrightness(b)
 	strip.show()                     # Refresh strip
-	time.sleep(1.0)
+	answer = raw_input(str(b)+' ')
+	#time.sleep(1.0)
 
 
