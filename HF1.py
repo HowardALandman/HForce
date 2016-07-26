@@ -4,6 +4,7 @@
 # Borrowing and adapting some ideas from G-Force,
 # as well as cinematic techniques and a bit of pure math.
 
+from hf_globals import n_pixels
 import alsaaudio, audioop	# for microphone input
 import array
 import numpy
@@ -11,6 +12,7 @@ import random
 import time
 from dotstar import Adafruit_DotStar
 from readColorMaps import readColorMaps
+import kaleidoscope as ks
 
 # Initialize USB microphone.
 # Borrowing/modifying code from CShadowRun
@@ -30,13 +32,15 @@ inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
 # The significance of this parameter is documented in the ALSA api.
 # For our purposes, it is suficcient to know that reads from the device
 # will return this many frames, each frame being 2 bytes long.
-# This means that the reads below will return either 256 bytes of data
+# This means that the reads below should return either 128 bytes of data
 # or 0 bytes of data. The latter is possible because we are in nonblocking
 # mode, but unlikely because we are doing a lot of other work between calls.
+# NOTE: No matter what argument is passed to this routine, it seems to
+# always return 370 samples (740 byes).  Stupid.
 inp.setperiodsize(64)
 
 # Initialize LED strip.
-n_pixels = 72 # Number of LEDs in strip
+#n_pixels = 72 # Number of LEDs in strip
 strip   = Adafruit_DotStar(n_pixels)	# Use SPI (pins 10=MOSI, 11=SCLK)
 strip.begin()           # Initialize pins for output
 MAX_BRIGHTNESS = 64	# Limit brightness to ~1/4 duty cycle
@@ -94,6 +98,15 @@ print "ff = ", flowFieldNames[ff_old_n], "->", flowFieldNames[ff_new_n]
 # Set up timers for transition.
 ff_fade_start = time.time() + ff_HoldTime
 ff_fade_end = ff_fade_start + ff_FadeTime
+
+# Initialize kaleidoscope to null.
+ks_old_n = 0
+ks_new_n = 0
+ks_old_map = ks.maps[ks_old_n]
+ks_new_map = ks.maps[ks_new_n]
+print "ks = ", ks.names[ks_old_n], "->", ks.names[ks_new_n]
+ks_fade_start = time.time() + ks.HoldTime
+ks_fade_end = ks_fade_start + ks.FadeTime
 
 # Initial screen is dark.
 screen = [ 0.0 for i in range(n_pixels) ]
@@ -244,7 +257,7 @@ while True:                              # Loop forever
 	# Yes, it would be more efficient (but less flexible) to draw the
 	# wave directly into screen.
 
-	# Finally use ColorMap to convert grey screen to RGB color.
+	# Use ColorMap to convert grey screen to RGB color.
 	# Decide which ColorMap to apply.
 	# Note that we shouldn't use "map" as a variable name
 	# since map() is a built in function. Use "cm_map" instead.
@@ -269,9 +282,33 @@ while True:                              # Loop forever
 		cm_fade_end = cm_fade_start + cm_FadeTime
 		print "cm = ", colorMapNames[cm_old_n], ", \
 			next = ", colorMapNames[cm_new_n]
-	# Apply the ColorMap.
+
+	# Apply Kaleidoscope.
+	# Kaleidoscope 0 is no transformation, so do nothing in that case.
+	if (now < ks_fade_start):
+		# We're just doing one (old) kaleidoscope.
+		ks_map = ks_old_map
+# No fading yet
+#	elif (now < ks_fade_end):
+#		# We're transitioning between two ColorMap.
+#		ks_frac = (now - ks_fade_start) / ks_FadeTime
+#		ks_map = numpy.rint(ks_old_map*(1.0-cm_frac) + ks_new_map*ks_frac).astype(int)
+	else:
+		# Time to switch completely to the new kaleidoscope
+		ks_map = ks_new_map
+		ks_old_n = ks_new_n
+		ks_old_map = ks_new_map
+		ks_new_n = random.randrange(len(ks.maps))
+		ks_new_map = ks.maps[ks_new_n]
+		ks_fade_start = now + ks.HoldTime
+		ks_fade_end = ks_fade_start + ks.FadeTime
+		print "ks = ", ks.names[ks_old_n], " -> ", ks.names[ks_new_n]
+	# Apply the Kaleidoscope.
+	ks_screen = [screen[ks_map[p]] for p in range(n_pixels)]
+
+	# Set up all pixels for draw at beginning of next cycle.
 	for p in range(n_pixels):
-		strip.setPixelColor(p, cm_interp(cm_map,screen[p]))
+		strip.setPixelColor(p, cm_interp(cm_map,ks_screen[p]))
 	# Fade to black if volume is low.
 	strip.setBrightness(min(MAX_BRIGHTNESS,(osc_max-osc_min)//2))
 
