@@ -27,6 +27,7 @@ for b in range(256):
 	answer = raw_input(str(b)+' ')
 	# Log it.
 	f.write(str(b)+"\t"+answer+"\n")
+	f.flush()
 	# Wait a fraction of a second to help ensure that the write completes,
 	# in case the next brightness level crashes the system.
 	time.sleep(0.1)
