@@ -28,23 +28,29 @@ inp.setchannels(1)
 inp.setrate(8000)
 inp.setformat(alsaaudio.PCM_FORMAT_S16_LE)
 #
+n_samples = 370
 # The period size controls the internal number of frames per period.
 # The significance of this parameter is documented in the ALSA api.
-# For our purposes, it is suficcient to know that reads from the device
+# For our purposes, it is sufficient to know that reads from the device
 # will return this many frames, each frame being 2 bytes long.
-# This means that the reads below should return either 128 bytes of data
+# This means that reads should return either 2*n_samples bytes of data
 # or 0 bytes of data. The latter is possible because we are in nonblocking
 # mode, but unlikely because we are doing a lot of other work between calls.
 # NOTE: No matter what argument is passed to this routine, it seems to
 # always return 370 samples (740 byes).  Stupid.
-inp.setperiodsize(64)
+inp.setperiodsize(n_samples)
 
 # Initialize LED strip.
 #n_pixels = 72 # Number of LEDs in strip
-strip   = Adafruit_DotStar(n_pixels)	# Use SPI (pins 10=MOSI, 11=SCLK)
+strip = Adafruit_DotStar(n_pixels)	# Use SPI (pins 10=MOSI, 11=SCLK)
 strip.begin()           # Initialize pins for output
-MAX_BRIGHTNESS = 64	# Limit brightness to ~1/4 duty cycle
-strip.setBrightness(MAX_BRIGHTNESS)
+MAX_BRIGHTNESS = 255
+#brightness = 32	# Limit brightness to ~1/8 duty cycle
+#brightness = 64	# Limit brightness to ~1/4 duty cycle
+brightness = 128	# Limit brightness to ~1/2 duty cycle
+#brightness = MAX_BRIGHTNESS
+strip.setBrightness(brightness)
+WHITE = 0xFFFFFF	# 8-bit GRB
 
 # Read ColorMaps from files.
 n_colors = 256	# length of static color maps
@@ -56,7 +62,7 @@ cm_old_n = random.randrange(len(colorMaps))
 cm_old_map = numpy.array(colorMaps[cm_old_n][2][0])
 cm_new_n = random.randrange(len(colorMaps))
 cm_new_map = numpy.array(colorMaps[cm_new_n][2][0])
-print "cm = ", colorMapNames[cm_old_n], "->", colorMapNames[cm_new_n]
+print "cm =", colorMapNames[cm_old_n], "->", colorMapNames[cm_new_n]
 # Set up timers for transition.
 cm_fade_start = time.time() + cm_HoldTime
 cm_fade_end = cm_fade_start + cm_FadeTime
@@ -79,11 +85,17 @@ ff_Flip  = [ ((n_pixels-1.0) - i) for i in range(n_pixels) ]
 # TentMap: a simple piecewise-linear chaotic system
 ff_TentMap  = [ ((n_pixels-1.0) - 2*abs(i-center)) for i in range(n_pixels) ]
 #print "ff_TentMap =", ff_TentMap
+# LeftWrap: Source is to right so pixels move left. Wraps around.
+ff_LeftWrap  = [ 1.0*((i+1)%n_pixels) for i in range(n_pixels) ]
+#print "ff_LeftWrap =", ff_LeftWrap
+# RightWrap: Source is to left so pixels move right. Wraps around.
+ff_RightWrap  = [ 1.0*((i + n_pixels -1) % n_pixels) for i in range(n_pixels) ]
+#print "ff_RightWrap =", ff_RightWrap
 # Left: Source is to right so pixels move left. Wraps around.
-ff_Left  = [ 1.0*((i+1)%n_pixels) for i in range(n_pixels) ]
+ff_Left  = [ 1.0*(i+1) for i in range(n_pixels) ]
 #print "ff_Left =", ff_Left
 # Right: Source is to left so pixels move right. Wraps around.
-ff_Right  = [ 1.0*((i + n_pixels -1) % n_pixels) for i in range(n_pixels) ]
+ff_Right  = [ 1.0*(i-1) for i in range(n_pixels) ]
 #print "ff_Right =", ff_Right
 flowFields = [ ff_Nowhere, ff_Expand, ff_Contract, ff_Flip, ff_TentMap, ff_Left, ff_Right ]
 flowFieldNames = [ 'Nowhere', 'Expand', 'Contract', 'Flip', 'TentMap', 'Left', 'Right' ]
@@ -94,7 +106,7 @@ ff_old_n = random.randrange(len(flowFields))
 ff_old_flow = flowFields[ff_old_n]
 ff_new_n = random.randrange(len(flowFields))
 ff_new_flow = flowFields[ff_new_n]
-print "ff = ", flowFieldNames[ff_old_n], "->", flowFieldNames[ff_new_n]
+print "ff =", flowFieldNames[ff_old_n], "->", flowFieldNames[ff_new_n]
 # Set up timers for transition.
 ff_fade_start = time.time() + ff_HoldTime
 ff_fade_end = ff_fade_start + ff_FadeTime
@@ -104,7 +116,7 @@ ks_old_n = 0
 ks_new_n = 0
 ks_old_map = ks.maps[ks_old_n]
 ks_new_map = ks.maps[ks_new_n]
-print "ks = ", ks.names[ks_old_n], "->", ks.names[ks_new_n]
+print "ks =", ks.names[ks_old_n], "->", ks.names[ks_new_n]
 ks_fade_start = time.time() + ks.HoldTime
 ks_fade_end = ks_fade_start + ks.FadeTime
 
@@ -166,8 +178,24 @@ OSC_BOUND = 128
 osc_max = OSC_BOUND	# semi-reasonable initial expectation
 osc_min = -OSC_BOUND	# semi-reasonable initial expectation
 
+# Initialize strobe.
+st_frequency = 20		# Hz
+st_period = 1.0/st_frequency	# seconds
+st_duty_cycle = 0.125		# not used by later code
+st_on_period = st_duty_cycle * st_period	# how long flash on?
+st_off_period = st_period - st_on_period	# how long flash off?
+st_is_on = True		# is flash on?
+st_enabled = False	# Are we strobing at all?
+print 'st = off'
+st_on_end = 0		# If on, when will we turn flash off?
+st_off_end = 0		# If off, when will we turn flash on?
+st_UpTime = 61.0
+st_DownTime = 13*st_UpTime
+st_start = time.time() + st_DownTime/2.0
+# Don't need to set st_end because we start with strobe disabled.
+
 # Target frame rate
-frameRate = 50		# Hz
+frameRate = 60		# Hz
 period = 1.0/frameRate	# Seconds
 
 while True:                              # Loop forever
@@ -193,15 +221,15 @@ while True:                              # Loop forever
 		ff_new_flow = flowFields[ff_new_n]
 		ff_fade_start = now + ff_HoldTime
 		ff_fade_end = ff_fade_start + ff_FadeTime
-		print "ff = ", flowFieldNames[ff_old_n], ", \
-			next = ", flowFieldNames[ff_new_n]
+		print "ff =", flowFieldNames[ff_old_n], ", \
+			next =", flowFieldNames[ff_new_n]
 
 	# Apply the FlowField.
 	# Interpolate pixel grey values.
 	interp_screen = [ ff_interp(screen,flow,i) for i in range(n_pixels) ]
 
 	# Decay values towards 0.0.
-	screen = [ x*9/10 for x in interp_screen ]
+	screen = [ x*15/16 for x in interp_screen ]
 	
 	# Compute WaveShape.
 	# Note that a WaveShape must return an entire screen
@@ -242,11 +270,12 @@ while True:                              # Loop forever
 		# so that one loud spike doesn't permanently mute the wave.
 		# Also try to keep the wave roughly centered.
 		if (osc_pixel < (n_pixels//2)):
-			#osc_max = max(OSC_BOUND,osc_max-2)
-			osc_max = max(osc_min+1,osc_max-2)
+			#osc_max = max(OSC_BOUND,osc_max-1)
+			#osc_max = max(osc_min+1,osc_max-1)
+			osc_max = max(osc_min,osc_max-1)
 		else:
-			#osc_min =  min(-OSC_BOUND,osc_min+2)
-			osc_min =  min(osc_max-1,osc_min+2)
+			#osc_min =  min(-OSC_BOUND,osc_min+1)
+			osc_min =  min(osc_max-1,osc_min+1)
 	for i in range(osc_pixel_old,osc_pixel):
 		wave[i] = 1.0*(n_pixels-1)
 	wave[osc_pixel] = 1.0*(n_pixels-1)
@@ -267,8 +296,8 @@ while True:                              # Loop forever
 	elif (now < cm_fade_end):
 		# We're transitioning between two ColorMap.
 		cm_frac = (now - cm_fade_start) / cm_FadeTime
-		#print "cm_old_map[0] = ", cm_old_map[0]
-		#print "cm_new_map[0] = ", cm_new_map[0]
+		#print "cm_old_map[0] =", cm_old_map[0]
+		#print "cm_new_map[0] =", cm_new_map[0]
 		#cm_map = [ int(cm_frac*(cm_new_map[i]) + (1.0-cm_frac)*(cm_old_map[i])) for i in range(n_colors) ]
 		cm_map = numpy.rint(cm_old_map*(1.0-cm_frac) + cm_new_map*cm_frac).astype(int)
 	else:
@@ -280,8 +309,8 @@ while True:                              # Loop forever
 		cm_new_map = numpy.array(colorMaps[cm_new_n][2][0])
 		cm_fade_start = now + cm_HoldTime
 		cm_fade_end = cm_fade_start + cm_FadeTime
-		print "cm = ", colorMapNames[cm_old_n], ", \
-			next = ", colorMapNames[cm_new_n]
+		print "cm =", colorMapNames[cm_old_n], ", \
+			next =", colorMapNames[cm_new_n]
 
 	# Apply Kaleidoscope.
 	# Kaleidoscope 0 is no transformation, so do nothing in that case.
@@ -302,19 +331,61 @@ while True:                              # Loop forever
 		ks_new_map = ks.maps[ks_new_n]
 		ks_fade_start = now + ks.HoldTime
 		ks_fade_end = ks_fade_start + ks.FadeTime
-		print "ks = ", ks.names[ks_old_n], " -> ", ks.names[ks_new_n]
+		print "ks =", ks.names[ks_old_n], " -> ", ks.names[ks_new_n]
 	# Apply the Kaleidoscope.
 	ks_screen = [screen[ks_map[p]] for p in range(n_pixels)]
 
 	# Set up all pixels for draw at beginning of next cycle.
 	for p in range(n_pixels):
 		strip.setPixelColor(p, cm_interp(cm_map,ks_screen[p]))
+
+	# Strobe.
 	# Fade to black if volume is low.
-	strip.setBrightness(min(MAX_BRIGHTNESS,(osc_max-osc_min)//2))
+	#st_brightness = min(brightness,(osc_max-osc_min)//2)
+	st_brightness = min(brightness,(osc_max-osc_min)*brightness//MAX_BRIGHTNESS)
+	#print 'st_brightness =', st_brightness
+	now = time.time()
+	# Turn strobing on or off?
+	if (st_enabled):
+		if (now > st_end):
+			# Turn strobing off.
+			st_enabled = False
+			print 'st = off'
+			st_start = now + st_DownTime
+	else:
+		if (now > st_start):
+			# Turn strobing on.
+			st_enabled = True
+			print 'st = on'
+			st_end = now + st_UpTime
+	# Implement strobe-light flashing.
+	# Note that we calculate on_period only when turning strobe on,
+	# then leave it unchanged until next flash.
+	# This is not perfect, but it's hard to predict, especially the future.
+	if (not st_enabled):
+		strip.setBrightness(st_brightness)
+	elif (st_is_on):
+		if (now > st_on_end):
+			# Turn strobe off
+			st_is_on = False
+			st_off_end = now + st_off_period
+			strip.setBrightness(0)
+		else:
+			strip.setBrightness(MAX_BRIGHTNESS)
+	else:	# st is off
+		now = time.time()
+		if (now > st_on_end):
+			st_is_on = True
+			# Want average total brightness to remain unchanged.
+			st_on_period = st_period*st_brightness/MAX_BRIGHTNESS
+			st_off_period = st_period - st_on_period
+			strip.setBrightness(MAX_BRIGHTNESS)
+		else:
+			strip.setBrightness(0)
 
 	# Sleep if we finished with time to spare.
 	delta = target_time - time.time()
 	if (delta > 0.0):
 		time.sleep(delta)
-	else:
-		print delta
+	#else:
+	#	print delta

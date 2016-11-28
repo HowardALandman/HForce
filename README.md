@@ -1,7 +1,14 @@
 # HForce
 1-D LED strip driver and music visualizer
 
-First functional release:
+This is my attempt to build a rich, non-repetitive, music visualizer for a hardware system comprising an Adafruit DotStar LED strip driven by a Raspberry Pi 3. The Pi 3 has much faster serial I/O than the Pi 2, so although all of this code should run on a Pi 2, the performance may not be as good.
+
+Many ideas have been borrowed from other systems.
+- WaveWand (1984) was a 1-D oscilloscope I built using TTL chips and a really nice Hewlett-Packard bar graph display with 101 red LEDs in 4 inches.
+- Andy O'Meara's G-Force (www.soundspectrum.com) was a shining example of modular design and visual artistry. The partitioning of the system into ColorMaps, FlowFields, WaveShapes, etc. comes from G-Force, as does the idea of gradually fading each of those when changing from one to the next.
+- There are also some features in HForce that are things I would *like* to have seen in G-force. These include alternate transition types, strobing, forced symmetry (kaleidoscoping), gain > 1 effects, and cellular automata. Not all of these are implemented yet, and some are implemented only in a separate test program but not yet integrated.
+
+
 HF1.py			- main program
 readColorMaps.py	- subroutine to looad all the ColorMaps
 			  NOTE: ColorMaps not included due to possible
